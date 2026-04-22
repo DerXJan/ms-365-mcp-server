@@ -264,7 +264,7 @@ class MicrosoftGraphServer {
         const scopes = buildScopesFromEndpoints(this.options.orgMode, this.options.enabledTools);
 
         res.json({
-          resource: `${requestOrigin}/mcp`,
+          resource: `${browserBase}/mcp`,
           authorization_servers: [browserBase],
           scopes_supported: scopes,
           bearer_methods_supported: ['header'],
