@@ -239,7 +239,7 @@ class MicrosoftGraphServer {
         const metadata: Record<string, unknown> = {
           issuer: browserBase,
           authorization_endpoint: `${browserBase}/authorize`,
-          token_endpoint: `${requestOrigin}/token`,
+          token_endpoint: `${browserBase}/token`,
           response_types_supported: ['code'],
           response_modes_supported: ['query'],
           grant_types_supported: ['authorization_code', 'refresh_token'],
@@ -249,7 +249,7 @@ class MicrosoftGraphServer {
         };
 
         if (this.options.enableDynamicRegistration) {
-          metadata.registration_endpoint = `${requestOrigin}/register`;
+          metadata.registration_endpoint = `${browserBase}/register`;
         }
 
         res.json(metadata);
@@ -264,7 +264,7 @@ class MicrosoftGraphServer {
         const scopes = buildScopesFromEndpoints(this.options.orgMode, this.options.enabledTools);
 
         res.json({
-          resource: `${requestOrigin}/mcp`,
+          resource: `${browserBase}/mcp`,
           authorization_servers: [browserBase],
           scopes_supported: scopes,
           bearer_methods_supported: ['header'],
@@ -531,7 +531,7 @@ class MicrosoftGraphServer {
           logger.error('Token endpoint error:', error);
           res.status(500).json({
             error: 'server_error',
-            error_description: 'Internal server error during token exchange',
+            error_description: (error as Error)?.message || 'Internal server error during token exchange',
           });
         }
       });

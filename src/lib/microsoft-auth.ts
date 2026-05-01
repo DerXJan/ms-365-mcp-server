@@ -4,7 +4,7 @@ import { getCloudEndpoints, type CloudType } from '../cloud-config.js';
 
 function buildWwwAuthenticate(req: Request, error: string, description: string): string {
   const protocol = req.secure ? 'https' : 'http';
-  const origin = `${protocol}://${req.get('host')}`;
+  const origin = process.env.MS365_MCP_PUBLIC_URL?.replace(/\/$/, '') || `${protocol}://${req.get('host')}`;
   const resourceMetadata = `${origin}/.well-known/oauth-protected-resource`;
   return `Bearer resource_metadata="${resourceMetadata}", error="${error}", error_description="${description}"`;
 }
@@ -104,25 +104,9 @@ export async function exchangeCodeForToken(
     params.append('code_verifier', codeVerifier);
   }
 
-  // When the app registration has the redirect_uri registered as a
-  // Single-Page Application (SPA), Entra requires the /token request to
-  // include an Origin header matching the redirect_uri's origin — otherwise
-  // it returns AADSTS9002327 ("Tokens issued for the 'Single-Page Application'
-  // client-type may only be redeemed via cross-origin requests"). SPA redirect
-  // URIs are the only way to get PKCE-without-secret working against a tenant
-  // where user-consent restrictions or a public-client-disallowed policy rule
-  // out a confidential-client flow. Emulate the cross-origin call here so
-  // server-side token redemption works for both Web and SPA redirect types
-  // (for Web redirects Entra simply ignores the Origin header).
   const headers: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
   };
-  try {
-    const redirectUrl = new URL(redirectUri);
-    headers['Origin'] = redirectUrl.origin;
-  } catch {
-    // redirect_uri is not a valid URL — omit Origin and let Entra decide
-  }
 
   const response = await fetch(`${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/token`, {
     method: 'POST',
