@@ -19,6 +19,12 @@ async function main(): Promise<void> {
     const readOnly = args.readOnly || false;
     const scopes = buildScopesFromEndpoints(includeWorkScopes, args.enabledTools, readOnly);
 
+    if (process.env.MS365_MCP_BLOCKED_SENSITIVITY_LABELS) {
+      if (!scopes.includes('Files.Read.All')) scopes.push('Files.Read.All');
+      if (!scopes.includes('InformationProtectionPolicy.Read')) scopes.push('InformationProtectionPolicy.Read');
+      logger.info('Sensitivity filtering enabled — added Files.Read.All and InformationProtectionPolicy.Read scopes');
+    }
+
     if (args.listPermissions) {
       const sorted = [...scopes].sort((a, b) => a.localeCompare(b));
       const mode = includeWorkScopes ? 'org' : 'personal';

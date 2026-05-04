@@ -59,6 +59,10 @@ program
     'Disable OAuth Dynamic Client Registration endpoint in HTTP mode'
   )
   .option(
+    '--blocked-sensitivity-labels <labels>',
+    'Comma-separated sensitivity labels to block from MCP client delivery (names or GUIDs, case-insensitive)'
+  )
+  .option(
     '--auth-browser',
     'Use browser-based interactive OAuth flow instead of device code for stdio mode. Opens system browser with localhost callback for seamless sign-in.'
   )
@@ -96,6 +100,7 @@ export interface CommandOptions {
   cloud?: string;
   enableDynamicRegistration?: boolean;
   dynamicRegistration?: boolean;
+  blockedSensitivityLabels?: string;
   authBrowser?: boolean;
   publicUrl?: string;
   /** @deprecated use publicUrl */
@@ -155,6 +160,14 @@ export function parseArgs(): CommandOptions {
 
   if (process.env.MS365_MCP_ORG_MODE === 'true' || process.env.MS365_MCP_ORG_MODE === '1') {
     options.orgMode = true;
+  }
+
+  if (!options.blockedSensitivityLabels && process.env.MS365_MCP_BLOCKED_SENSITIVITY_LABELS) {
+    options.blockedSensitivityLabels = process.env.MS365_MCP_BLOCKED_SENSITIVITY_LABELS;
+  }
+
+  if (options.blockedSensitivityLabels) {
+    process.env.MS365_MCP_BLOCKED_SENSITIVITY_LABELS = options.blockedSensitivityLabels;
   }
 
   if (

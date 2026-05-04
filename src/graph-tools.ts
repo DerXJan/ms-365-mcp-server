@@ -10,6 +10,14 @@ import { fileURLToPath } from 'url';
 import { TOOL_CATEGORIES } from './tool-categories.js';
 import { getRequestTokens } from './request-context.js';
 import { parseTeamsUrl } from './lib/teams-url-parser.js';
+import {
+  loadSensitivityFilterConfig,
+  getToolSensitivityContext,
+  filterListResponse,
+  checkSingleItem,
+  filterDocumentListResponse,
+  checkSingleDocument,
+} from './lib/sensitivity-filter.js';
 import { buildBM25Index, scoreQuery, tokenize, type BM25Index } from './lib/bm25.js';
 export interface DiscoverySearchIndex {
   bm25: BM25Index;
@@ -278,6 +286,8 @@ async function executeGraphTool(
 
     clampTopQueryParam(queryParams);
 
+    const sensitivityConfig = loadSensitivityFilterConfig();
+
     const preferValues: string[] = [];
 
     // Handle timezone parameter for calendar endpoints
@@ -445,6 +455,79 @@ async function executeGraphTool(
         );
       } catch (e) {
         logger.error(`Error during pagination: ${e}`);
+      }
+    }
+
+    if (sensitivityConfig.enabled && response?.content?.[0]?.text) {
+      const toolContext = getToolSensitivityContext(tool.alias);
+      if (toolContext !== 'none') {
+        try {
+          const jsonResponse = JSON.parse(response.content[0].text);
+
+          if (jsonResponse.value && Array.isArray(jsonResponse.value)) {
+            let filtered: unknown[];
+            let removedCount: number;
+
+            if (toolContext === 'email') {
+              ({ filtered, removedCount } = filterListResponse(
+                jsonResponse.value,
+                toolContext,
+                sensitivityConfig
+              ));
+            } else {
+              ({ filtered, removedCount } = await filterDocumentListResponse(
+                jsonResponse.value,
+                sensitivityConfig,
+                graphClient,
+                accountAccessToken
+              ));
+            }
+
+            if (removedCount > 0) {
+              jsonResponse.value = filtered;
+              if (jsonResponse['@odata.count'] !== undefined) {
+                jsonResponse['@odata.count'] = filtered.length;
+              }
+              response.content[0].text = JSON.stringify(jsonResponse);
+              logger.info(
+                `Sensitivity filter: removed ${removedCount} item(s) from ${tool.alias}`
+              );
+            }
+          } else {
+            let blocked: boolean;
+            let label: string | undefined;
+
+            if (toolContext === 'email') {
+              ({ blocked, label } = checkSingleItem(jsonResponse, toolContext, sensitivityConfig));
+            } else {
+              ({ blocked, label } = await checkSingleDocument(
+                jsonResponse,
+                sensitivityConfig,
+                graphClient,
+                accountAccessToken
+              ));
+            }
+
+            if (blocked) {
+              logger.info(
+                `Sensitivity filter: blocked ${tool.alias} — item has label "${label}"`
+              );
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify({
+                      error: `Access denied: this item has sensitivity label "${label}" which is blocked by server policy.`,
+                    }),
+                  },
+                ],
+                isError: true,
+              };
+            }
+          }
+        } catch {
+          // Non-JSON response, skip filtering
+        }
       }
     }
 
