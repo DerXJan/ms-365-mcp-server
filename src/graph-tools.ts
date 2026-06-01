@@ -42,11 +42,25 @@ interface EndpointConfig {
   contentType?: string;
   acceptType?: string; // Custom Accept header for endpoints returning non-JSON content (e.g., text/vtt)
   readOnly?: boolean; // When true, allow this endpoint in read-only mode even if method is not GET
+  disabled?: boolean; // When true, the endpoint is skipped during code generation AND tool registration.
 }
 
 const endpointsData = JSON.parse(
   readFileSync(path.join(__dirname, 'endpoints.json'), 'utf8')
 ) as EndpointConfig[];
+
+// Endpoints with `"disabled": true` are filtered out of the generated client by
+// bin/modules/simplified-openapi.mjs, so they normally never appear in `api.endpoints`.
+// We keep a set here so that, if codegen hasn't been re-run after toggling the flag,
+// any stale generated entries are still skipped at registration time. The full
+// `endpointsData` list is preserved so metadata lookups (workScopes, readOnly, llmTip,
+// …) continue to work the same as before.
+const disabledTools = new Set(endpointsData.filter((e) => e.disabled).map((e) => e.toolName));
+if (disabledTools.size > 0) {
+  logger.info(
+    `endpoints.json marks ${disabledTools.size} tool(s) as disabled; they will be skipped during registration.`
+  );
+}
 
 /** When set to a positive integer, caps Graph `$top` on list requests (see README). */
 function maxTopFromEnv(): number | undefined {
@@ -600,6 +614,11 @@ export function registerGraphTools(
   let failedCount = 0;
 
   for (const tool of api.endpoints) {
+    if (disabledTools.has(tool.alias)) {
+      logger.info(`Skipping disabled tool ${tool.alias} (disabled: true in endpoints.json)`);
+      skippedCount++;
+      continue;
+    }
     const endpointConfig = endpointsData.find((e) => e.toolName === tool.alias);
     if (!orgMode && endpointConfig && !endpointConfig.scopes && endpointConfig.workScopes) {
       logger.info(`Skipping work account tool ${tool.alias} - not in org mode`);
@@ -846,6 +865,9 @@ export function buildToolsRegistry(
   >();
 
   for (const tool of api.endpoints) {
+    if (disabledTools.has(tool.alias)) {
+      continue;
+    }
     const endpointConfig = endpointsData.find((e) => e.toolName === tool.alias);
 
     if (!orgMode && endpointConfig && !endpointConfig.scopes && endpointConfig.workScopes) {

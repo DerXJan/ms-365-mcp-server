@@ -94,7 +94,21 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
     if (params.state) searchParams.set('state', params.state);
     if (params.scopes?.length) searchParams.set('scope', params.scopes.join(' '));
     if (params.resource) searchParams.set('resource', params.resource.href);
+
+    // Allow appending arbitrary query parameters to the authorize URL via the
+    // MS365_MCP_AddToAuthURL environment variable, e.g. "prompt=select_account"
+    // or "prompt=select_account&login_hint=user@contoso.com". Existing keys are
+    // overwritten so the env var wins.
+    const extra = process.env.MS365_MCP_AddToAuthURL;
+    if (extra) {
+      const extraParams = new URLSearchParams(extra.replace(/^[?&]/, ''));
+      for (const [key, value] of extraParams) {
+        searchParams.set(key, value);
+      }
+    }
+
     targetUrl.search = searchParams.toString();
+    logger.info(`OAuth authorize redirect: ${targetUrl.toString()}`);
     res.redirect(targetUrl.toString());
   }
 

@@ -19,11 +19,17 @@ interface Endpoint {
   method: string;
   scopes?: string[];
   workScopes?: string[];
+  disabled?: boolean;
 }
 
-const endpoints: Endpoint[] = JSON.parse(
+const allEndpoints: Endpoint[] = JSON.parse(
   readFileSync(path.join(__dirname, '..', 'src', 'endpoints.json'), 'utf8')
 );
+
+// Disabled endpoints are filtered out before code generation
+// (see bin/modules/simplified-openapi.mjs), so they have no matching generated
+// client entry by design — exclude them here too.
+const endpoints = allEndpoints.filter((e) => !e.disabled);
 
 describe('endpoints.json validation', () => {
   it('should not have endpoints with both scopes and workScopes', () => {
