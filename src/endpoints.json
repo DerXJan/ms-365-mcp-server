@@ -1608,14 +1608,6 @@
     "disabled": true
   },
   {
-    "pathPattern": "/places/{placeType}",
-    "method": "get",
-    "toolName": "get-places",
-    "workScopes": ["Place.Read.All"],
-    "llmTip": "Gets places by placetype. PlaceType can be: microsoft.graph.building, microsoft.graph.floor, microsoft.graph.section, microsoft.graph.desk, microsoft.graph.room, microsoft.graph.workspace or microsoft.graph.roomlist. The returning data contains a property placeId that can be used in next tools calls related to places",
-    "disabled": false
-  },
-  {
     "pathPattern": "/places/{place-id}/graph.room",
     "method": "get",
     "toolName": "get-room",
