@@ -1613,7 +1613,7 @@
     "toolName": "get-room",
     "workScopes": ["Place.Read.All"],
     "llmTip": "Gets a place cast as a room, returning room-specific properties: displayName, emailAddress (for booking), capacity, building, floorNumber, floorLabel, isWheelChairAccessible, audioDeviceName, videoDeviceName, displayDeviceName. The place-id can be the room's ID or email address.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/places/{place-id}/graph.roomList",
@@ -1621,7 +1621,7 @@
     "toolName": "get-room-list",
     "workScopes": ["Place.Read.All"],
     "llmTip": "Gets a place cast as a room list, returning room list properties: displayName, emailAddress, address. Use the place-id (ID or email address) of the room list. Then use list-room-list-rooms to get the rooms within this list.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/places/{place-id}/graph.roomList/rooms",
@@ -1629,7 +1629,7 @@
     "toolName": "list-room-list-rooms",
     "workScopes": ["Place.Read.All"],
     "llmTip": "Lists rooms belonging to a specific room list. The place-id is the ID or email address of the room list (from get-room-list). Returns rooms with displayName, emailAddress, capacity, building, floorNumber, floorLabel, and AV equipment details. Combine with find-meeting-times to find available rooms for booking.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/places/{place-id}/graph.roomList/rooms/{room-id}",
@@ -1637,7 +1637,7 @@
     "toolName": "get-room-list-room",
     "workScopes": ["Place.Read.All"],
     "llmTip": "Gets a specific room within a room list. The place-id is the room list ID or email, and room-id is the specific room ID. Returns full room details including capacity, building, floor, and AV equipment.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/places/{place-id}",
@@ -1645,7 +1645,7 @@
     "toolName": "update-place",
     "workScopes": ["Place.ReadWrite.All"],
     "llmTip": "Updates properties of a place (room, room list, building, floor, section, desk, workspace). Body can include: displayName, phone, capacity, building, floorNumber, floorLabel, tags, audioDeviceName, videoDeviceName, displayDeviceName, isWheelChairAccessible. Use get-room or get-room-list to verify current values before updating.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/me/insights/trending",

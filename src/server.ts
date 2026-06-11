@@ -408,7 +408,21 @@ class MicrosoftGraphServer {
           }
         }
 
+        // Allow appending arbitrary query parameters to the authorize URL via
+        // the MS365_MCP_AddToAuthURL environment variable, e.g.
+        // "prompt=select_account" or "prompt=select_account&domain_hint=contoso.com".
+        // Existing keys are overwritten so the env var wins. Useful for forcing
+        // the account picker when the upstream MCP client doesn't send `prompt`.
+        const extraAuthParams = process.env.MS365_MCP_AddToAuthURL;
+        if (extraAuthParams) {
+          const extra = new URLSearchParams(extraAuthParams.replace(/^[?&]/, ''));
+          for (const [key, value] of extra) {
+            microsoftAuthUrl.searchParams.set(key, value);
+          }
+        }
+
         // Redirect to Microsoft's authorization page
+        logger.info(`OAuth authorize redirect: ${microsoftAuthUrl.toString()}`);
         res.redirect(microsoftAuthUrl.toString());
       });
 
