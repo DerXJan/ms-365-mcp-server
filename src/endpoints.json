@@ -1573,7 +1573,7 @@
     "toolName": "get-my-presence",
     "workScopes": ["Presence.Read"],
     "llmTip": "Gets the current user's presence status. Returns availability (Available, Busy, DoNotDisturb, BeRightBack, Away, Offline) and activity (InACall, InAMeeting, Presenting, OutOfOffice, etc.). Useful to check your own status before scheduling.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/users/{user-id}/presence",
@@ -1581,7 +1581,7 @@
     "toolName": "get-user-presence",
     "workScopes": ["Presence.Read.All"],
     "llmTip": "Gets presence status for a specific user by their user ID or UPN (email). Returns availability and activity. Use list-users to find the user ID first.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/communications/presences",
@@ -1589,7 +1589,7 @@
     "toolName": "get-presences-by-user-id",
     "workScopes": ["Presence.Read.All"],
     "llmTip": "Gets presence for multiple users in a single call. Body: { ids: ['user-id-1', 'user-id-2', ...] }. Returns array of presence objects. More efficient than calling get-user-presence for each user. Maximum 650 user IDs per request.",
-    "disabled": true
+    "disabled": false
   },
   {
     "pathPattern": "/solutions/virtualEvents/webinars/{virtualEventWebinar-id}",
