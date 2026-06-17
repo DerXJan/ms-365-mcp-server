@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/**/*.ts', 'src/endpoints.json'],
+  entry: ['src/**/*.ts', 'src/endpoints.json', 'src/custom-tools/custom-endpoints.json'],
   format: ['esm'],
   target: 'es2020',
   outDir: 'dist',

@@ -28,7 +28,7 @@ import { describeToolSchema } from './lib/tool-schema.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-interface EndpointConfig {
+export interface EndpointConfig {
   pathPattern: string;
   method: string;
   toolName: string;
@@ -139,7 +139,152 @@ interface CallToolResult {
   [key: string]: unknown;
 }
 
-async function executeGraphTool(
+/**
+ * Builds the Zod parameter schema for a tool, mirroring what the generated client + endpoints.json
+ * conventions expect. Used by both `registerGraphTools` (generated tools) and
+ * `registerCustomTools` (hand-authored Graph endpoints in `src/custom-tools/`), so both kinds of
+ * tools expose identical parameter conventions to the LLM (path params, fetchAllPages, OData
+ * descriptions, account, includeHeaders/excludeResponse, timezone, expandExtendedProperties).
+ */
+export function buildParamSchemaForTool(
+  tool: { path: string; method: string; parameters?: { name: string; schema?: z.ZodTypeAny }[] },
+  endpointConfig: EndpointConfig | undefined,
+  multiAccount: boolean,
+  accountNames: string[]
+): Record<string, z.ZodTypeAny> {
+  const paramSchema: Record<string, z.ZodTypeAny> = {};
+  if (tool.parameters && tool.parameters.length > 0) {
+    for (const param of tool.parameters) {
+      paramSchema[param.name] = param.schema || z.any();
+    }
+  }
+
+  // Extract path parameters from the path pattern (e.g., :todoTaskListId from /me/todo/lists/:todoTaskListId/tasks)
+  // The generated client omits these from tool.parameters, so we add them manually.
+  const pathParamMatches = tool.path.matchAll(/:([a-zA-Z]+)/g);
+  for (const match of pathParamMatches) {
+    const pathParamName = match[1];
+    if (!(pathParamName in paramSchema)) {
+      paramSchema[pathParamName] = z.string().describe(`Path parameter: ${pathParamName}`);
+    }
+  }
+
+  if (tool.method.toUpperCase() === 'GET' && tool.path.includes('/')) {
+    paramSchema['fetchAllPages'] = z
+      .boolean()
+      .describe(
+        'Follow @odata.nextLink and merge up to 100 pages into one response. ' +
+          'Can return enormous payloads—only when the user explicitly needs a full export. ' +
+          'Prefer a small $top first, then paginate or narrow with $filter/$search.'
+      )
+      .optional();
+  }
+
+  // Override OData parameter descriptions with spec-gap guidance
+  if (paramSchema['filter'] !== undefined || paramSchema['$filter'] !== undefined) {
+    const key = paramSchema['$filter'] !== undefined ? '$filter' : 'filter';
+    paramSchema[key] = z
+      .string()
+      .describe(
+        'OData filter expression. Add $count=true for advanced filters (flag/flagStatus, contains()). Cannot combine with $search.'
+      )
+      .optional();
+  }
+  if (paramSchema['search'] !== undefined || paramSchema['$search'] !== undefined) {
+    const key = paramSchema['$search'] !== undefined ? '$search' : 'search';
+    paramSchema[key] = z
+      .string()
+      .describe('KQL search query — wrap value in double quotes. Cannot combine with $filter.')
+      .optional();
+  }
+  if (paramSchema['select'] !== undefined || paramSchema['$select'] !== undefined) {
+    const key = paramSchema['$select'] !== undefined ? '$select' : 'select';
+    paramSchema[key] = z
+      .string()
+      .describe('Comma-separated fields to return, e.g. id,subject,from,receivedDateTime')
+      .optional();
+  }
+  if (paramSchema['orderby'] !== undefined || paramSchema['$orderby'] !== undefined) {
+    const key = paramSchema['$orderby'] !== undefined ? '$orderby' : 'orderby';
+    paramSchema[key] = z
+      .string()
+      .describe('Sort expression, e.g. receivedDateTime desc')
+      .optional();
+  }
+  if (paramSchema['top'] !== undefined || paramSchema['$top'] !== undefined) {
+    const key = paramSchema['$top'] !== undefined ? '$top' : 'top';
+    paramSchema[key] = z
+      .number()
+      .describe(
+        'Page size (Graph $top). Start small (e.g. 5–15) so responses fit the model context; ' +
+          'raise only if needed. Use $select to return fewer fields per item. ' +
+          'For more rows, use @odata.nextLink from the response instead of a very large $top.'
+      )
+      .optional();
+  }
+  if (paramSchema['skip'] !== undefined || paramSchema['$skip'] !== undefined) {
+    const key = paramSchema['$skip'] !== undefined ? '$skip' : 'skip';
+    paramSchema[key] = z
+      .number()
+      .describe('Items to skip for pagination. Not supported with $search.')
+      .optional();
+  }
+  if (paramSchema['count'] !== undefined || paramSchema['$count'] !== undefined) {
+    const countKey = paramSchema['$count'] !== undefined ? '$count' : 'count';
+    paramSchema[countKey] = z
+      .boolean()
+      .describe(
+        'Set true to enable advanced query mode (ConsistencyLevel: eventual). Required for complex $filter on flag/flagStatus or contains().'
+      )
+      .optional();
+  }
+
+  // Add account parameter for multi-account mode.
+  if (multiAccount) {
+    const accountHint =
+      accountNames.length > 0 ? `Known accounts: ${accountNames.join(', ')}. ` : '';
+    paramSchema['account'] = z
+      .string()
+      .describe(
+        `${accountHint}Microsoft account email to use for this request. ` +
+          `Required when multiple accounts are configured. ` +
+          `Use the list-accounts tool to discover all currently available accounts.`
+      )
+      .optional();
+  }
+
+  paramSchema['includeHeaders'] = z
+    .boolean()
+    .describe('Include response headers (including ETag) in the response metadata')
+    .optional();
+
+  paramSchema['excludeResponse'] = z
+    .boolean()
+    .describe('Exclude the full response body and only return success or failure indication')
+    .optional();
+
+  if (endpointConfig?.supportsTimezone) {
+    paramSchema['timezone'] = z
+      .string()
+      .describe(
+        'IANA timezone name (e.g., "America/New_York", "Europe/London", "Asia/Tokyo") for calendar event times. If not specified, times are returned in UTC.'
+      )
+      .optional();
+  }
+
+  if (endpointConfig?.supportsExpandExtendedProperties) {
+    paramSchema['expandExtendedProperties'] = z
+      .boolean()
+      .describe(
+        'When true, expands singleValueExtendedProperties on each event. Use this to retrieve custom extended properties (e.g., sync metadata) stored on calendar events.'
+      )
+      .optional();
+  }
+
+  return paramSchema;
+}
+
+export async function executeGraphTool(
   tool: (typeof api.endpoints)[0],
   config: EndpointConfig | undefined,
   graphClient: GraphClient,
@@ -644,141 +789,7 @@ export function registerGraphTools(
       continue;
     }
 
-    const paramSchema: Record<string, z.ZodTypeAny> = {};
-    if (tool.parameters && tool.parameters.length > 0) {
-      for (const param of tool.parameters) {
-        paramSchema[param.name] = param.schema || z.any();
-      }
-    }
-
-    // Extract path parameters from the path pattern (e.g., :todoTaskListId from /me/todo/lists/:todoTaskListId/tasks)
-    // The generated client omits these from tool.parameters, so we add them manually.
-    const pathParamMatches = tool.path.matchAll(/:([a-zA-Z]+)/g);
-    for (const match of pathParamMatches) {
-      const pathParamName = match[1];
-      if (!(pathParamName in paramSchema)) {
-        paramSchema[pathParamName] = z.string().describe(`Path parameter: ${pathParamName}`);
-      }
-    }
-
-    if (tool.method.toUpperCase() === 'GET' && tool.path.includes('/')) {
-      paramSchema['fetchAllPages'] = z
-        .boolean()
-        .describe(
-          'Follow @odata.nextLink and merge up to 100 pages into one response. ' +
-            'Can return enormous payloads—only when the user explicitly needs a full export. ' +
-            'Prefer a small $top first, then paginate or narrow with $filter/$search.'
-        )
-        .optional();
-    }
-
-    // Override OData parameter descriptions with spec-gap guidance
-    if (paramSchema['filter'] !== undefined || paramSchema['$filter'] !== undefined) {
-      const key = paramSchema['$filter'] !== undefined ? '$filter' : 'filter';
-      paramSchema[key] = z
-        .string()
-        .describe(
-          'OData filter expression. Add $count=true for advanced filters (flag/flagStatus, contains()). Cannot combine with $search.'
-        )
-        .optional();
-    }
-    if (paramSchema['search'] !== undefined || paramSchema['$search'] !== undefined) {
-      const key = paramSchema['$search'] !== undefined ? '$search' : 'search';
-      paramSchema[key] = z
-        .string()
-        .describe('KQL search query — wrap value in double quotes. Cannot combine with $filter.')
-        .optional();
-    }
-    if (paramSchema['select'] !== undefined || paramSchema['$select'] !== undefined) {
-      const key = paramSchema['$select'] !== undefined ? '$select' : 'select';
-      paramSchema[key] = z
-        .string()
-        .describe('Comma-separated fields to return, e.g. id,subject,from,receivedDateTime')
-        .optional();
-    }
-    if (paramSchema['orderby'] !== undefined || paramSchema['$orderby'] !== undefined) {
-      const key = paramSchema['$orderby'] !== undefined ? '$orderby' : 'orderby';
-      paramSchema[key] = z
-        .string()
-        .describe('Sort expression, e.g. receivedDateTime desc')
-        .optional();
-    }
-    if (paramSchema['top'] !== undefined || paramSchema['$top'] !== undefined) {
-      const key = paramSchema['$top'] !== undefined ? '$top' : 'top';
-      paramSchema[key] = z
-        .number()
-        .describe(
-          'Page size (Graph $top). Start small (e.g. 5–15) so responses fit the model context; ' +
-            'raise only if needed. Use $select to return fewer fields per item. ' +
-            'For more rows, use @odata.nextLink from the response instead of a very large $top.'
-        )
-        .optional();
-    }
-    if (paramSchema['skip'] !== undefined || paramSchema['$skip'] !== undefined) {
-      const key = paramSchema['$skip'] !== undefined ? '$skip' : 'skip';
-      paramSchema[key] = z
-        .number()
-        .describe('Items to skip for pagination. Not supported with $search.')
-        .optional();
-    }
-    if (paramSchema['count'] !== undefined || paramSchema['$count'] !== undefined) {
-      const countKey = paramSchema['$count'] !== undefined ? '$count' : 'count';
-      paramSchema[countKey] = z
-        .boolean()
-        .describe(
-          'Set true to enable advanced query mode (ConsistencyLevel: eventual). Required for complex $filter on flag/flagStatus or contains().'
-        )
-        .optional();
-    }
-
-    // Add account parameter for multi-account mode.
-    // Layer 2: Account names are surfaced in the description (not as a strict enum) so the LLM
-    // sees available accounts upfront without a round-trip, but accounts added mid-session via
-    // --login are still accepted — getTokenForAccount() handles validation at runtime.
-    if (multiAccount) {
-      const accountHint =
-        accountNames.length > 0 ? `Known accounts: ${accountNames.join(', ')}. ` : '';
-      paramSchema['account'] = z
-        .string()
-        .describe(
-          `${accountHint}Microsoft account email to use for this request. ` +
-            `Required when multiple accounts are configured. ` +
-            `Use the list-accounts tool to discover all currently available accounts.`
-        )
-        .optional();
-    }
-
-    // Add includeHeaders parameter for all tools to capture ETags and other headers
-    paramSchema['includeHeaders'] = z
-      .boolean()
-      .describe('Include response headers (including ETag) in the response metadata')
-      .optional();
-
-    // Add excludeResponse parameter to only return success/failure indication
-    paramSchema['excludeResponse'] = z
-      .boolean()
-      .describe('Exclude the full response body and only return success or failure indication')
-      .optional();
-
-    // Add timezone parameter for calendar endpoints that support it
-    if (endpointConfig?.supportsTimezone) {
-      paramSchema['timezone'] = z
-        .string()
-        .describe(
-          'IANA timezone name (e.g., "America/New_York", "Europe/London", "Asia/Tokyo") for calendar event times. If not specified, times are returned in UTC.'
-        )
-        .optional();
-    }
-
-    // Add expandExtendedProperties parameter for calendar endpoints that support it
-    if (endpointConfig?.supportsExpandExtendedProperties) {
-      paramSchema['expandExtendedProperties'] = z
-        .boolean()
-        .describe(
-          'When true, expands singleValueExtendedProperties on each event. Use this to retrieve custom extended properties (e.g., sync metadata) stored on calendar events.'
-        )
-        .optional();
-    }
+    const paramSchema = buildParamSchemaForTool(tool, endpointConfig, multiAccount, accountNames);
 
     // Build the tool description, optionally appending LLM tips
     let toolDescription =

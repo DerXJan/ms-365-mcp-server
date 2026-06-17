@@ -1,0 +1,13 @@
+{
+  "tools": [
+    {
+      "toolName": "list-places",
+      "pathPattern": "/places/{placeType}",
+      "method": "GET",
+      "workScopes": ["Place.Read.All"],
+      "description": "List places (rooms, workspaces, roomLists, buildings, desks, etc.) of a specific type defined in the tenant. Returns a collection of place objects. Pass placeType as an OData type literal (e.g. 'microsoft.graph.room', 'microsoft.graph.roomList', 'microsoft.graph.building', 'microsoft.graph.desk').",
+      "llmTip": "$filter and $count are ONLY supported when placeType is microsoft.graph.room, microsoft.graph.workspace, or microsoft.graph.roomList — Graph returns 400 for other place types. Default page size is 100 for room/workspace/roomList and 1000 for other types; pass $top to override. Personal Microsoft accounts are not supported — this tool requires a work/school account (--org-mode).",
+      "parametersModule": "./tools/list-places.js"
+    }
+  ]
+}

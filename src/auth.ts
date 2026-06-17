@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import { getSecrets, type AppSecrets } from './secrets.js';
 import { getCloudEndpoints, getDefaultClientId } from './cloud-config.js';
+import { loadCustomEndpointsSync } from './custom-tools/manifest.js';
 
 // Ok so this is a hack to lazily import keytar only when needed
 // since --http mode may not need it at all, and keytar can be a pain to install (looking at you alpine)
@@ -43,8 +44,14 @@ const endpointsData = (
   JSON.parse(readFileSync(path.join(__dirname, 'endpoints.json'), 'utf8')) as EndpointConfig[]
 ).filter((e) => !e.disabled);
 
+// Custom hand-authored Graph endpoints. CustomEndpointConfig extends EndpointConfig,
+// so merging into endpoints.default makes buildScopesFromEndpoints process them
+// transparently — same readOnly / orgMode / enabledToolsPattern semantics, same
+// scope-hierarchy collapse.
+const customEndpointsData = loadCustomEndpointsSync() as EndpointConfig[];
+
 const endpoints = {
-  default: endpointsData,
+  default: [...endpointsData, ...customEndpointsData],
 };
 
 const SERVICE_NAME = 'ms-365-mcp-server';

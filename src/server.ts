@@ -6,6 +6,7 @@ import express, { Request, Response } from 'express';
 import logger, { enableConsoleLogging } from './logger.js';
 import { registerAuthTools } from './auth-tools.js';
 import { registerGraphTools, registerDiscoveryTools } from './graph-tools.js';
+import { registerCustomTools } from './custom-tools/registry.js';
 import { buildMcpServerInstructions } from './mcp-instructions.js';
 import GraphClient from './graph-client.js';
 import AuthManager, { buildScopesFromEndpoints } from './auth.js';
@@ -76,7 +77,7 @@ class MicrosoftGraphServer {
     this.secrets = null;
   }
 
-  private createMcpServer(): McpServer {
+  private async createMcpServer(): Promise<McpServer> {
     const server = new McpServer(
       {
         name: 'Microsoft365MCP',
@@ -117,6 +118,18 @@ class MicrosoftGraphServer {
         this.multiAccount,
         this.accountNames
       );
+      // Custom hand-authored Graph endpoints (filling gaps the codegen pipeline
+      // cannot produce). Skipped in --discovery mode to match registerGraphTools.
+      await registerCustomTools(
+        server,
+        this.graphClient!,
+        this.options.readOnly,
+        this.options.enabledTools,
+        this.options.orgMode,
+        this.authManager,
+        this.multiAccount,
+        this.accountNames
+      );
     }
 
     return server;
@@ -144,7 +157,7 @@ class MicrosoftGraphServer {
     this.graphClient = new GraphClient(this.authManager, this.secrets, outputFormat);
 
     if (!this.options.http) {
-      this.server = this.createMcpServer();
+      this.server = await this.createMcpServer();
     }
 
     if (this.options.discovery) {
@@ -564,7 +577,7 @@ class MicrosoftGraphServer {
         microsoftBearerTokenAuthMiddleware,
         async (req: Request & { microsoftAuth?: { accessToken: string } }, res: Response) => {
           const handler = async () => {
-            const server = this.createMcpServer();
+            const server = await this.createMcpServer();
             const transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: undefined, // Stateless mode
             });
@@ -605,7 +618,7 @@ class MicrosoftGraphServer {
         microsoftBearerTokenAuthMiddleware,
         async (req: Request & { microsoftAuth?: { accessToken: string } }, res: Response) => {
           const handler = async () => {
-            const server = this.createMcpServer();
+            const server = await this.createMcpServer();
             const transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: undefined, // Stateless mode
             });
